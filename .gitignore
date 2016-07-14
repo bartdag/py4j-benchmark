@@ -1,0 +1,9 @@
+.DS_Store
+*.pyc
+*.swp
+*.jar
+*.class
+*.asc
+/java/out/
+/java/classes/
+/.tox/
