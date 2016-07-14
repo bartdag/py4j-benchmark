@@ -6,6 +6,7 @@ import csv
 import gc
 import os
 import platform
+import subprocess
 import sys
 from time import time, sleep
 
@@ -17,16 +18,21 @@ DEFAULT_SEED = 17
 
 DEFAULT_SLEEP_TIME = 0.1
 
-STD_CLASS_NAME = "StandardBenchmarkUtility"
+STD_CLASS_NAME = "Py4JBenchmarkUtility"
 
-PINNED_THREAD_CLASS_NAME = "PinnedBenchmarkUtility"
+PINNED_THREAD_CLASS_NAME = "Py4JPinnedThreadBenchmarkUtility"
 
 DEFAULT_CSV_ENCODING = "ascii"
 
 GC_COLLECT_RUN = 10
 
 HEADER = ["test", "iterations", "mean", "stddev", "total", "python version",
-          "py4j version", "os version", "cpu count"]
+          "java version", "py4j version", "os version", "cpu count"]
+
+STD_JAVA_SOURCE_FILE = "java/src/{0}.java".format(STD_CLASS_NAME)
+
+PINNED_THREAD_JAVA_SOURCE_FILE =\
+    "java/src/{0}.java".format(PINNED_THREAD_CLASS_NAME)
 
 BenchStats = namedtuple(
     "BenchStats", ["iterations", "mean", "stddev", "total"])
@@ -114,12 +120,27 @@ def get_parser():
 def compile_java(javac_path, py4j_jar_path, compile_pinned_thread):
     """Compiles the Java utility classes used for the benchmark.
     """
-    pass
+    if compile_pinned_thread:
+        classes = STD_JAVA_SOURCE_FILE + " " + PINNED_THREAD_JAVA_SOURCE_FILE
+    else:
+        classes = STD_JAVA_SOURCE_FILE
+
+    cmd_line = "{0} -d java/bin -cp {1} {2}".format(
+        javac_path, py4j_jar_path, classes)
+    output = subprocess.call(cmd_line, shell=True)
+    if output != 0:
+        raise Exception("Could not compile utility classes. Error code: {0}"
+                        .format(output))
 
 
 def start_java(java_path, py4j_jar_path, main_class):
     """Starts a Java process"""
-    pass
+    cmd_line = "{0} -cp {1}{2}{3} {4}".format(
+        java_path, py4j_jar_path, os.pathsep, "java/bin", main_class)
+    process = subprocess.Popen(cmd_line, shell=True, stdout=None, stderr=None,
+                               stdin=None, close_fds=True)
+    sleep(DEFAULT_SLEEP_TIME * 5)
+    return process
 
 
 def has_pinned_thread():
@@ -168,6 +189,14 @@ def get_os_version():
     return "{0} {1}".format(platform.system(), platform.release())
 
 
+def get_java_version(options):
+    cmd_line = "{0} -version".format(options.java_path)
+    version = subprocess.check_output(
+        cmd_line, stderr=subprocess.STDOUT, shell=True).decode("ascii")
+    version = version.split("\n")[0].split('"')[1]
+    return version
+
+
 def get_cpu_count():
     try:
         import multiprocessing
@@ -181,7 +210,11 @@ def run_standard_tests(options, results):
     """
     start_java(options.java_path, options.py4j_jar_path, STD_CLASS_NAME)
     gateway = get_gateway()
+
     _run_tests(options, results, gateway, STD_TESTS)
+
+    gateway.shutdown()
+    sleep(DEFAULT_SLEEP_TIME * 5)
 
 
 def run_pinned_thread_tests(options, results):
@@ -209,8 +242,8 @@ def report_results(options, results):
     file_exists = os.path.exists(csv_file_path)
     mode = "a" if options.append_to_csv and file_exists else "w"
     suffix = [
-        get_python_version(), get_py4j_version(), get_os_version(),
-        get_cpu_count()]
+        get_python_version(), get_java_version(options), get_py4j_version(),
+        get_os_version(), get_cpu_count()]
     with codecs.open(
             csv_file_path, mode, encoding=DEFAULT_CSV_ENCODING) as csv_file:
         writer = csv.writer(csv_file, quoting=csv.QUOTE_NONNUMERIC)
