@@ -16,6 +16,15 @@ DEFAULT_MAX_BYTES = 268435456
 
 DEFAULT_MAX_ITERATIONS = 100
 
+# 1 KB
+MEDIUM_BYTES = 1024
+
+# 1 MB
+LARGE_BYTES = 1024 * 1024
+
+# 10 MB
+EXTRA_LARGE_BYTES = 10 * 1024 * 1024
+
 DEFAULT_SEED = 17
 
 DEFAULT_SLEEP_TIME = 0.1
@@ -36,11 +45,16 @@ STD_JAVA_SOURCE_FILE = "java/src/{0}.java".format(STD_CLASS_NAME)
 PINNED_THREAD_JAVA_SOURCE_FILE =\
     "java/src/{0}.java".format(PINNED_THREAD_CLASS_NAME)
 
+# 64 bytes once encoded to utf-8
+DEFAULT_STRING = "Hello\nWorld\n\nTest1234567\néééééééééééééèèèèèè\n"
+
+DEFAULT_STRING_BYTE_SIZE = len(DEFAULT_STRING.encode("utf-8"))
+
 BenchStats = namedtuple(
     "BenchStats", ["iterations", "mean", "stddev", "total", "timestamp"])
 
 if sys.version_info.major == 2:
-    range = xrange
+    range = xrange  # noqa
 
 
 def null_print(message):
@@ -54,8 +68,112 @@ def verbose_print(message):
     """
     print(message)
 
-
 vprint = null_print
+
+
+# UTILITY HERE
+
+
+def run_gc_collect():
+    for i in range(GC_COLLECT_RUN):
+        gc.collect()
+
+
+def get_python_version():
+    """Gets a friendly python version.
+    """
+    import platform
+    version = sys.version_info
+    impl = platform.python_implementation()
+    return "{0} {1}.{2}.{3}".format(
+        impl, version.major, version.minor, version.micro)
+
+
+def get_py4j_version():
+    from py4j import version
+    return version.__version__
+
+
+def get_os_version():
+    return "{0} {1}".format(platform.system(), platform.release())
+
+
+def get_java_version(options):
+    cmd_line = "{0} -version".format(options.java_path)
+    version = subprocess.check_output(
+        cmd_line, stderr=subprocess.STDOUT, shell=True).decode("ascii")
+    version = version.split("\n")[0].split('"')[1]
+    return version
+
+
+def get_cpu_count():
+    try:
+        import multiprocessing
+        return multiprocessing.cpu_count()
+    except Exception:
+        return -1
+
+
+class OnlineStats(object):
+    """
+    Welford's algorithm computes the sample variance incrementally.
+
+    Source: http://stackoverflow.com/a/5544108/131427
+
+    Fixed by bart :-)
+    """
+
+    def __init__(self, iterable=None, ddof=1):
+        self.n = 1
+        self.mean = 0.0
+        self.total = 0.0
+        self.s = 0.0
+        if iterable is not None:
+            for datum in iterable:
+                self.include(datum)
+
+    def include(self, datum):
+        self.total += datum
+        tempMean = self.mean
+        self.mean += (datum - tempMean) / self.n
+        self.s += (datum - tempMean) * (datum - self.mean)
+        self.n += 1
+
+    @property
+    def size(self):
+        return self.n - 1
+
+    @property
+    def variance(self):
+        if self.n > 2:
+            return self.s / (self.n - 2)
+        else:
+            return 0
+
+    @property
+    def std(self):
+        return sqrt(self.variance)
+
+
+def benchmark(function, startup, cleanup, iterations):
+    online_stats = OnlineStats()
+    timestamp = datetime.datetime.now()
+    for i in range(iterations):
+        if startup:
+            startup()
+        start = time()
+        function()
+        stop = time()
+        if cleanup:
+            cleanup()
+        online_stats.include(stop-start)
+    return BenchStats(
+        iterations,
+        online_stats.mean,
+        online_stats.std,
+        online_stats.total,
+        timestamp
+    )
 
 
 # TESTS HERE
@@ -134,6 +252,50 @@ def python_type_conversion(options, gateway):
     return benchmark(func, None, cleanup, options.max_iterations)
 
 
+def python_medium_string(options, gateway):
+    String = gateway.jvm.String
+    size = min(MEDIUM_BYTES, options.max_bytes) // DEFAULT_STRING_BYTE_SIZE
+    a_string = DEFAULT_STRING * size
+
+    def func():
+        String.valueOf(a_string)
+
+    def cleanup():
+        run_gc_collect()
+
+    return benchmark(func, None, cleanup, options.max_iterations)
+
+
+def python_large_string(options, gateway):
+    String = gateway.jvm.String
+    size = min(LARGE_BYTES, options.max_bytes) // DEFAULT_STRING_BYTE_SIZE
+    a_string = DEFAULT_STRING * size
+
+    def func():
+        String.valueOf(a_string)
+
+    def cleanup():
+        run_gc_collect()
+
+    return benchmark(func, None, cleanup, options.max_iterations)
+
+
+def python_extra_large_string(options, gateway):
+    String = gateway.jvm.String
+    size = min(EXTRA_LARGE_BYTES, options.max_bytes)\
+        // DEFAULT_STRING_BYTE_SIZE
+    a_string = DEFAULT_STRING * size
+    iterations = max(10, options.max_iterations // 100)
+
+    def func():
+        String.valueOf(a_string)
+
+    def cleanup():
+        run_gc_collect()
+
+    return benchmark(func, None, cleanup, iterations)
+
+
 def python_simple_callback(options, gateway):
     class Echo(object):
         def echo(self, param):
@@ -161,6 +323,9 @@ STD_TESTS = OrderedDict([
     ("java-static-method", java_static_method_call),
     ("java-list", java_list),
     ("python-type-conversion", python_type_conversion),
+    ("python-medium-string", python_medium_string),
+    ("python-large-string", python_large_string),
+    ("python-extra-large-string", python_extra_large_string),
     ("python-simple-callback", python_simple_callback),
 ])
 
@@ -169,67 +334,7 @@ PINNED_THREAD_TESTS = OrderedDict([
 ])
 
 
-class OnlineStats(object):
-    """
-    Welford's algorithm computes the sample variance incrementally.
-
-    Source: http://stackoverflow.com/a/5544108/131427
-
-    Fixed by bart :-)
-    """
-
-    def __init__(self, iterable=None, ddof=1):
-        self.n = 1
-        self.mean = 0.0
-        self.total = 0.0
-        self.s = 0.0
-        if iterable is not None:
-            for datum in iterable:
-                self.include(datum)
-
-    def include(self, datum):
-        self.total += datum
-        tempMean = self.mean
-        self.mean += (datum - tempMean) / self.n
-        self.s += (datum - tempMean) * (datum - self.mean)
-        self.n += 1
-
-    @property
-    def size(self):
-        return self.n - 1
-
-    @property
-    def variance(self):
-        if self.n > 2:
-            return self.s / (self.n - 2)
-        else:
-            return 0
-
-    @property
-    def std(self):
-        return sqrt(self.variance)
-
-
-def benchmark(function, startup, cleanup, iterations):
-    online_stats = OnlineStats()
-    timestamp = datetime.datetime.now()
-    for i in range(iterations):
-        if startup:
-            startup()
-        start = time()
-        function()
-        stop = time()
-        if cleanup:
-            cleanup()
-        online_stats.include(stop-start)
-    return BenchStats(
-        iterations,
-        online_stats.mean,
-        online_stats.std,
-        online_stats.total,
-        timestamp
-    )
-
+# BENCHMARK STEPS HERE
 
 def get_parser():
     """Creates the command line argument parser.
@@ -294,10 +399,12 @@ def compile_java(javac_path, py4j_jar_path, compile_pinned_thread):
                         .format(output))
 
 
-def start_java(java_path, py4j_jar_path, main_class):
+def start_java(java_path, py4j_jar_path, main_class, max_bytes):
     """Starts a Java process"""
-    cmd_line = "{0} -cp {1}{2}{3} {4}".format(
-        java_path, py4j_jar_path, os.pathsep, "java/bin", main_class)
+    java_heap_size = (max_bytes // 1024 // 1024) + 768
+    cmd_line = "{0} -Xmx{5}m -cp {1}{2}{3} {4}".format(
+        java_path, py4j_jar_path, os.pathsep, "java/bin", main_class,
+        java_heap_size)
     process = subprocess.Popen(cmd_line, shell=True, stdout=None, stderr=None,
                                stdin=None, close_fds=True)
     sleep(DEFAULT_SLEEP_TIME * 5)
@@ -338,45 +445,11 @@ def get_pinned_thread_gateway():
     return client_server
 
 
-def get_python_version():
-    """Gets a friendly python version.
-    """
-    import platform
-    version = sys.version_info
-    impl = platform.python_implementation()
-    return "{0} {1}.{2}.{3}".format(
-        impl, version.major, version.minor, version.micro)
-
-
-def get_py4j_version():
-    from py4j import version
-    return version.__version__
-
-
-def get_os_version():
-    return "{0} {1}".format(platform.system(), platform.release())
-
-
-def get_java_version(options):
-    cmd_line = "{0} -version".format(options.java_path)
-    version = subprocess.check_output(
-        cmd_line, stderr=subprocess.STDOUT, shell=True).decode("ascii")
-    version = version.split("\n")[0].split('"')[1]
-    return version
-
-
-def get_cpu_count():
-    try:
-        import multiprocessing
-        return multiprocessing.cpu_count()
-    except Exception:
-        return -1
-
-
 def run_standard_tests(options, results):
     """Runs the full standard test suite.
     """
-    start_java(options.java_path, options.py4j_jar_path, STD_CLASS_NAME)
+    start_java(options.java_path, options.py4j_jar_path, STD_CLASS_NAME,
+               options.max_bytes)
     gateway = get_gateway()
 
     try:
@@ -391,11 +464,6 @@ def run_standard_tests(options, results):
 
 def run_pinned_thread_tests(options, results):
     pass
-
-
-def run_gc_collect():
-    for i in range(GC_COLLECT_RUN):
-        gc.collect()
 
 
 def _run_tests(options, results, gateway, test_dict):
