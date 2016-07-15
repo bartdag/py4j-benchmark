@@ -4,6 +4,7 @@ import codecs
 from collections import OrderedDict, namedtuple
 import csv
 import gc
+from math import sqrt
 import os
 import platform
 import subprocess
@@ -12,7 +13,7 @@ from time import time, sleep
 
 DEFAULT_MAX_BYTES = 268435456
 
-DEFAULT_MAX_ITERATIONS = 1000000
+DEFAULT_MAX_ITERATIONS = 1000
 
 DEFAULT_SEED = 17
 
@@ -24,7 +25,7 @@ PINNED_THREAD_CLASS_NAME = "Py4JPinnedThreadBenchmarkUtility"
 
 DEFAULT_CSV_ENCODING = "ascii"
 
-GC_COLLECT_RUN = 10
+GC_COLLECT_RUN = 3
 
 HEADER = ["test", "iterations", "mean", "stddev", "total", "python version",
           "java version", "py4j version", "os version", "cpu count"]
@@ -36,6 +37,9 @@ PINNED_THREAD_JAVA_SOURCE_FILE =\
 
 BenchStats = namedtuple(
     "BenchStats", ["iterations", "mean", "stddev", "total"])
+
+if sys.version_info.major == 2:
+    range = xrange
 
 
 def null_print(message):
@@ -55,10 +59,16 @@ vprint = null_print
 
 # TESTS HERE
 
-def java_instance_creation(gateway):
-    start = time()
-    stop = time()
-    return BenchStats(1000, 50.23, 12.0, stop - start)
+def java_instance_creation(options, gateway):
+    StringBuilder = gateway.jvm.StringBuilder
+
+    def func():
+        StringBuilder()
+
+    def cleanup():
+        run_gc_collect()
+
+    return benchmark(func, cleanup, options.max_iterations)
 
 
 STD_TESTS = OrderedDict([
@@ -68,6 +78,64 @@ STD_TESTS = OrderedDict([
 PINNED_THREAD_TESTS = OrderedDict([
 
 ])
+
+
+class OnlineStats(object):
+    """
+    Welford's algorithm computes the sample variance incrementally.
+
+    Source: http://stackoverflow.com/a/5544108/131427
+
+    Fixed by bart :-)
+    """
+
+    def __init__(self, iterable=None, ddof=1):
+        self.n = 1
+        self.mean = 0.0
+        self.total = 0.0
+        self.s = 0.0
+        if iterable is not None:
+            for datum in iterable:
+                self.include(datum)
+
+    def include(self, datum):
+        self.total += datum
+        tempMean = self.mean
+        self.mean += (datum - tempMean) / self.n
+        self.s += (datum - tempMean) * (datum - self.mean)
+        self.n += 1
+
+    @property
+    def size(self):
+        return self.n - 1
+
+    @property
+    def variance(self):
+        if self.n > 2:
+            return self.s / (self.n - 2)
+        else:
+            return 0
+
+    @property
+    def std(self):
+        return sqrt(self.variance)
+
+
+def benchmark(function, cleanup, iterations):
+    online_stats = OnlineStats()
+    for i in range(iterations):
+        start = time()
+        function()
+        stop = time()
+        if cleanup:
+            cleanup()
+        online_stats.include(stop-start)
+    return BenchStats(
+        iterations,
+        online_stats.mean,
+        online_stats.std,
+        online_stats.total
+    )
 
 
 def get_parser():
@@ -100,7 +168,7 @@ def get_parser():
         "current PATH")
     parser.add_argument(
         "--max-bytes", dest="max_bytes", action="store",
-        type=int, default=DEFAULT_MAX_ITERATIONS,
+        type=int, default=DEFAULT_MAX_BYTES,
         help="Maximum number of bytes transferred from either sides")
     parser.add_argument(
         "--max-iterations", dest="max_iterations", action="store",
@@ -211,7 +279,11 @@ def run_standard_tests(options, results):
     start_java(options.java_path, options.py4j_jar_path, STD_CLASS_NAME)
     gateway = get_gateway()
 
-    _run_tests(options, results, gateway, STD_TESTS)
+    try:
+        _run_tests(options, results, gateway, STD_TESTS)
+    except Exception:
+        gateway.shutdown()
+        raise
 
     gateway.shutdown()
     sleep(DEFAULT_SLEEP_TIME * 5)
@@ -228,11 +300,11 @@ def run_gc_collect():
 
 def _run_tests(options, results, gateway, test_dict):
     for test_name, test in test_dict.items():
-        stats = test(gateway)
+        stats = test(options, gateway)
         results[test_name] = stats
         if options.verbose:
             report_verbose_result(test_name, stats)
-        gc.collect()
+        run_gc_collect()
         gateway.close()
         sleep(DEFAULT_SLEEP_TIME)
 
