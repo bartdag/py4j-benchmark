@@ -20,6 +20,10 @@ public class Py4JBenchmarkUtility {
 		return bytes;
 	}
 
+	public Object callEcho(Echo echo, Object param) {
+		return echo.echo(param);
+	}
+
 	public static void main(String[] args) {
 		int seed = DEFAULT_SEED;
 		if (args.length > 0) {
@@ -28,5 +32,9 @@ public class Py4JBenchmarkUtility {
 		Py4JBenchmarkUtility utility = new Py4JBenchmarkUtility(seed);
 		GatewayServer server = new GatewayServer(utility);
 		server.start(true);
+	}
+
+	public interface Echo {
+		Object echo(Object param);
 	}
 }

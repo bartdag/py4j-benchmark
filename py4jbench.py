@@ -3,6 +3,7 @@ import argparse
 import codecs
 from collections import OrderedDict, namedtuple
 import csv
+import datetime
 import gc
 from math import sqrt
 import os
@@ -13,7 +14,7 @@ from time import time, sleep
 
 DEFAULT_MAX_BYTES = 268435456
 
-DEFAULT_MAX_ITERATIONS = 1000
+DEFAULT_MAX_ITERATIONS = 100
 
 DEFAULT_SEED = 17
 
@@ -28,7 +29,7 @@ DEFAULT_CSV_ENCODING = "ascii"
 GC_COLLECT_RUN = 3
 
 HEADER = ["test", "iterations", "mean", "stddev", "total", "python version",
-          "java version", "py4j version", "os version", "cpu count"]
+          "java version", "py4j version", "os version", "cpu count", "date"]
 
 STD_JAVA_SOURCE_FILE = "java/src/{0}.java".format(STD_CLASS_NAME)
 
@@ -36,7 +37,7 @@ PINNED_THREAD_JAVA_SOURCE_FILE =\
     "java/src/{0}.java".format(PINNED_THREAD_CLASS_NAME)
 
 BenchStats = namedtuple(
-    "BenchStats", ["iterations", "mean", "stddev", "total"])
+    "BenchStats", ["iterations", "mean", "stddev", "total", "timestamp"])
 
 if sys.version_info.major == 2:
     range = xrange
@@ -68,11 +69,99 @@ def java_instance_creation(options, gateway):
     def cleanup():
         run_gc_collect()
 
-    return benchmark(func, cleanup, options.max_iterations)
+    return benchmark(func, None, cleanup, options.max_iterations)
+
+
+def java_static_method_call(options, gateway):
+    System = gateway.jvm.System
+
+    def func():
+        System.currentTimeMillis()
+
+    def cleanup():
+        run_gc_collect()
+
+    return benchmark(func, None, cleanup, options.max_iterations)
+
+
+def java_list(options, gateway):
+
+    def func():
+        al = gateway.jvm.java.util.ArrayList()
+        al2 = gateway.jvm.java.util.ArrayList()
+        al1orig = gateway.jvm.java.util.ArrayList()
+
+        al1orig.append(1)
+        al.append(1)
+        al2.append(2)
+        al += al2
+        if not(len(al) == 2 and str(al) == str(al) and al == al):
+            raise Exception
+
+        if not (al[0] == 1 and al[-1] == 2):
+            raise Exception
+
+        if al[:-1] != al1orig:
+            raise Exception
+
+        al[0] = 2
+
+        al_sum = 0
+        for el in al:
+            al_sum += el
+
+    def cleanup():
+        run_gc_collect()
+
+    return benchmark(func, None, cleanup, options.max_iterations)
+
+
+def python_type_conversion(options, gateway):
+    StringBuilder = gateway.jvm.StringBuilder
+
+    def func():
+        b = StringBuilder()
+        b.append("a")
+        b.append(-2)
+        b.append(True)
+        b.append(3000000000000)
+        b.append(1.0/3.0)
+        b.append(b)
+
+    def cleanup():
+        run_gc_collect()
+
+    return benchmark(func, None, cleanup, options.max_iterations)
+
+
+def python_simple_callback(options, gateway):
+    class Echo(object):
+        def echo(self, param):
+            return param
+
+        class Java:
+            implements = ["Py4JBenchmarkUtility$Echo"]
+
+    entry_point = gateway.entry_point
+    python_echo = Echo()
+
+    def func():
+        response = entry_point.callEcho(python_echo, 1)
+        if response != 1:
+            raise Exception
+
+    def cleanup():
+        run_gc_collect()
+
+    return benchmark(func, None, cleanup, options.max_iterations)
 
 
 STD_TESTS = OrderedDict([
     ("java-instance-creation", java_instance_creation),
+    ("java-static-method", java_static_method_call),
+    ("java-list", java_list),
+    ("python-type-conversion", python_type_conversion),
+    ("python-simple-callback", python_simple_callback),
 ])
 
 PINNED_THREAD_TESTS = OrderedDict([
@@ -121,9 +210,12 @@ class OnlineStats(object):
         return sqrt(self.variance)
 
 
-def benchmark(function, cleanup, iterations):
+def benchmark(function, startup, cleanup, iterations):
     online_stats = OnlineStats()
+    timestamp = datetime.datetime.now()
     for i in range(iterations):
+        if startup:
+            startup()
         start = time()
         function()
         stop = time()
@@ -134,7 +226,8 @@ def benchmark(function, cleanup, iterations):
         iterations,
         online_stats.mean,
         online_stats.std,
-        online_stats.total
+        online_stats.total,
+        timestamp
     )
 
 
@@ -227,7 +320,14 @@ def get_gateway():
     # Do some magic here to determine if we are running old or new py4j
     # versions.
     from py4j.java_gateway import JavaGateway
-    return JavaGateway()
+    if has_pinned_thread():
+        from py4j.java_gateway import (
+            GatewayParameters, CallbackServerParameters)
+        return JavaGateway(
+            gateway_parameters=GatewayParameters(),
+            callback_server_parameters=CallbackServerParameters())
+    else:
+        return JavaGateway(start_callback_server=True)
 
 
 def get_pinned_thread_gateway():
@@ -305,7 +405,10 @@ def _run_tests(options, results, gateway, test_dict):
         if options.verbose:
             report_verbose_result(test_name, stats)
         run_gc_collect()
-        gateway.close()
+        # This is not perfect because callback connections
+        # are not closed and are kept for 30s so next connection will be
+        # fast...
+        gateway.close(keep_callback_server=True)
         sleep(DEFAULT_SLEEP_TIME)
 
 
@@ -322,7 +425,10 @@ def report_results(options, results):
         if not file_exists:
             writer.writerow(HEADER)
         for test_name, stat in results.items():
-            writer.writerow([test_name] + list(stat) + suffix)
+            stat_list = list(stat)
+            writer.writerow(
+                [test_name] + stat_list[:-1] + suffix +
+                [stat.timestamp.strftime("%Y-%m-%d %H:%M:%S")])
 
 
 def report_verbose_result(test_name, result):
