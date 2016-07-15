@@ -10,11 +10,14 @@ import os
 import platform
 import subprocess
 import sys
+from threading import Thread
 from time import time, sleep
 
 DEFAULT_MAX_BYTES = 268435456
 
 DEFAULT_MAX_ITERATIONS = 100
+
+DEFAULT_THREAD_COUNT = 50
 
 # 1 KB
 MEDIUM_BYTES = 1024
@@ -296,6 +299,39 @@ def python_extra_large_string(options, gateway):
     return benchmark(func, None, cleanup, iterations)
 
 
+def python_multiple_calling_threads(options, gateway):
+
+    threads_to_create = options.max_threads
+
+    def inner_thread_func():
+        sb = gateway.jvm.StringBuilder()
+        sb2 = gateway.jvm.StringBuilder()
+        sb.append(1)
+        sb2.append("hello")
+        sb.append(sb2)
+
+    def func():
+        threads = []
+        for i in range(threads_to_create):
+            t = Thread(target=inner_thread_func)
+            threads.append(t)
+
+        for t in threads:
+            t.start()
+
+        for t in threads:
+            t.join()
+
+    def cleanup():
+        run_gc_collect()
+        gateway.close(keep_callback_server=True)
+
+    return benchmark(func, None, cleanup, options.max_iterations)
+
+
+# TODO Garbage Collection
+
+
 def python_simple_callback(options, gateway):
     class Echo(object):
         def echo(self, param):
@@ -318,6 +354,9 @@ def python_simple_callback(options, gateway):
     return benchmark(func, None, cleanup, options.max_iterations)
 
 
+# TODO Recursive callback
+
+
 STD_TESTS = OrderedDict([
     ("java-instance-creation", java_instance_creation),
     ("java-static-method", java_static_method_call),
@@ -326,6 +365,7 @@ STD_TESTS = OrderedDict([
     ("python-medium-string", python_medium_string),
     ("python-large-string", python_large_string),
     ("python-extra-large-string", python_extra_large_string),
+    ("python-multiple-calling-threads", python_multiple_calling_threads),
     ("python-simple-callback", python_simple_callback),
 ])
 
@@ -372,6 +412,10 @@ def get_parser():
         "--max-iterations", dest="max_iterations", action="store",
         type=int, default=DEFAULT_MAX_ITERATIONS,
         help="Maximum number of iterations. Determine the testing time.")
+    parser.add_argument(
+        "--max-threads", dest="max_threads", action="store",
+        type=int, default=DEFAULT_THREAD_COUNT,
+        help="Maximum number of explicitly started threads.")
     parser.add_argument(
         "--seed", dest="seed", action="store",
         type=int, default=DEFAULT_SEED,
@@ -454,11 +498,9 @@ def run_standard_tests(options, results):
 
     try:
         _run_tests(options, results, gateway, STD_TESTS)
-    except Exception:
+    finally:
         gateway.shutdown()
-        raise
 
-    gateway.shutdown()
     sleep(DEFAULT_SLEEP_TIME * 5)
 
 
@@ -496,7 +538,7 @@ def report_results(options, results):
             stat_list = list(stat)
             writer.writerow(
                 [test_name] + stat_list[:-1] + suffix +
-                [stat.timestamp.strftime("%Y-%m-%d %H:%M:%S")])
+                [stat.timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")])
 
 
 def report_verbose_result(test_name, result):
@@ -510,7 +552,7 @@ def report_verbose_result(test_name, result):
 def main():
     parser = get_parser()
     args = parser.parse_args()
-    results = {}
+    results = OrderedDict()
 
     if args.verbose:
         global vprint
