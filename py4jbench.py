@@ -2,7 +2,7 @@
 from __future__ import unicode_literals
 import argparse
 import codecs
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict, namedtuple, deque
 import csv
 import datetime
 import gc
@@ -230,7 +230,9 @@ def java_list(options, gateway):
         if not (al[0] == 1 and al[-1] == 2):
             raise Exception
 
-        if al[:-1] != al1orig:
+        # For backward compatibility because Python 2 does not delegate
+        # __ne__ to __eq__
+        if not (al[:-1] == al1orig):
             raise Exception
 
         al[0] = 2
@@ -345,7 +347,8 @@ def python_garbage_collection(options, gateway):
     """
     StringBuffer = gateway.jvm.StringBuffer
 
-    l = []
+    # Because Python 2 does not have a clear method on list...
+    l = deque()
 
     def init():
         # 100 objects to compensate for the gc.collect() call
