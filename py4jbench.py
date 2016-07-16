@@ -189,16 +189,29 @@ class Echo(object):
         implements = ["Py4JBenchmarkUtility$Echo"]
 
 
+class Countdown(object):
+
+    def __init__(self):
+        self.called = 0
+
+    def countdown(self, count, countdown_object):
+        self.called += 1
+        if count == 0:
+            return 0
+        else:
+            return countdown_object.countdown(count - 1, self)
+
+    class Java:
+        implements = ["Py4JBenchmarkUtility$Countdown"]
+
+
 def java_instance_creation(options, gateway):
     StringBuilder = gateway.jvm.StringBuilder
 
     def func():
         StringBuilder()
 
-    def cleanup():
-        run_gc_collect()
-
-    return benchmark(func, None, cleanup, options.max_iterations)
+    return benchmark(func, None, run_gc_collect, options.max_iterations)
 
 
 def java_static_method_call(options, gateway):
@@ -207,10 +220,7 @@ def java_static_method_call(options, gateway):
     def func():
         System.currentTimeMillis()
 
-    def cleanup():
-        run_gc_collect()
-
-    return benchmark(func, None, cleanup, options.max_iterations)
+    return benchmark(func, None, run_gc_collect, options.max_iterations)
 
 
 def java_list(options, gateway):
@@ -241,10 +251,7 @@ def java_list(options, gateway):
         for el in al:
             al_sum += el
 
-    def cleanup():
-        run_gc_collect()
-
-    return benchmark(func, None, cleanup, options.max_iterations)
+    return benchmark(func, None, run_gc_collect, options.max_iterations)
 
 
 def python_type_conversion(options, gateway):
@@ -259,10 +266,7 @@ def python_type_conversion(options, gateway):
         b.append(1.0/3.0)
         b.append(b)
 
-    def cleanup():
-        run_gc_collect()
-
-    return benchmark(func, None, cleanup, options.max_iterations)
+    return benchmark(func, None, run_gc_collect, options.max_iterations)
 
 
 def python_medium_string(options, gateway):
@@ -273,10 +277,7 @@ def python_medium_string(options, gateway):
     def func():
         String.valueOf(a_string)
 
-    def cleanup():
-        run_gc_collect()
-
-    return benchmark(func, None, cleanup, options.max_iterations)
+    return benchmark(func, None, run_gc_collect, options.max_iterations)
 
 
 def python_large_string(options, gateway):
@@ -287,10 +288,7 @@ def python_large_string(options, gateway):
     def func():
         String.valueOf(a_string)
 
-    def cleanup():
-        run_gc_collect()
-
-    return benchmark(func, None, cleanup, options.max_iterations)
+    return benchmark(func, None, run_gc_collect, options.max_iterations)
 
 
 def python_extra_large_string(options, gateway):
@@ -303,10 +301,7 @@ def python_extra_large_string(options, gateway):
     def func():
         String.valueOf(a_string)
 
-    def cleanup():
-        run_gc_collect()
-
-    return benchmark(func, None, cleanup, iterations)
+    return benchmark(func, None, run_gc_collect, iterations)
 
 
 def python_multiple_calling_threads(options, gateway):
@@ -360,10 +355,7 @@ def python_garbage_collection(options, gateway):
         # Redundant most of the time and adds time :-(
         gc.collect()
 
-    def cleanup():
-        run_gc_collect()
-
-    return benchmark(func, init, cleanup, options.max_iterations)
+    return benchmark(func, init, run_gc_collect, options.max_iterations)
 
 
 def python_simple_callback(options, gateway):
@@ -376,13 +368,23 @@ def python_simple_callback(options, gateway):
         if response != 1:
             raise Exception
 
+    return benchmark(func, None, run_gc_collect, options.max_iterations)
+
+
+def python_recursive_callback(options, gateway):
+    startCountdown = gateway.jvm.Py4JBenchmarkUtility.startCountdown
+    pythonCountdown = Countdown()
+
+    def func():
+        startCountdown(20, pythonCountdown)
+        if pythonCountdown.called != 11:
+            raise Exception
+
     def cleanup():
+        pythonCountdown.called = 0
         run_gc_collect()
 
     return benchmark(func, None, cleanup, options.max_iterations)
-
-
-# TODO Recursive callback
 
 
 STD_TESTS = OrderedDict([
@@ -396,6 +398,7 @@ STD_TESTS = OrderedDict([
     ("python-multiple-calling-threads", python_multiple_calling_threads),
     ("python-garbage-collection", python_garbage_collection),
     ("python-simple-callback", python_simple_callback),
+    ("python-recursive-callback", python_recursive_callback),
 ])
 
 PINNED_THREAD_TESTS = OrderedDict([

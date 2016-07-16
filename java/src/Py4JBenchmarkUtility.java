@@ -24,6 +24,11 @@ public class Py4JBenchmarkUtility {
 		return echo.echo(param);
 	}
 
+	public static int startCountdown(int count, Countdown pythonCountdown) {
+		Countdown javaCountdown = new CountdownImpl();
+		return pythonCountdown.countdown(count, javaCountdown);
+	}
+
 	public static void main(String[] args) {
 		int seed = DEFAULT_SEED;
 		if (args.length > 0) {
@@ -34,7 +39,21 @@ public class Py4JBenchmarkUtility {
 		server.start(true);
 	}
 
-	public interface Echo {
+	public static interface Echo {
 		Object echo(Object param);
+	}
+
+	public static interface Countdown {
+		int countdown(int count, Countdown countdownObject);
+	}
+
+	public static class CountdownImpl implements Countdown {
+		@Override public int countdown(int count, Countdown countdownObject) {
+			if (count == 0) {
+				return 0;
+			} else {
+				return countdownObject.countdown(count - 1, this);
+			}
+		}
 	}
 }
