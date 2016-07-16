@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 import argparse
 import codecs
@@ -180,6 +181,13 @@ def benchmark(function, startup, cleanup, iterations):
 
 
 # TESTS HERE
+class Echo(object):
+    def echo(self, param):
+        return param
+
+    class Java:
+        implements = ["Py4JBenchmarkUtility$Echo"]
+
 
 def java_instance_creation(options, gateway):
     StringBuilder = gateway.jvm.StringBuilder
@@ -329,16 +337,33 @@ def python_multiple_calling_threads(options, gateway):
     return benchmark(func, None, cleanup, options.max_iterations)
 
 
-# TODO Garbage Collection
+def python_garbage_collection(options, gateway):
+    """
+
+    Note: there is no corresponding garbage collection test for the JVM because
+    it is not deterministric and thus very difficult to reliably test.
+    """
+    StringBuffer = gateway.jvm.StringBuffer
+
+    l = []
+
+    def init():
+        # 100 objects to compensate for the gc.collect() call
+        for i in range(100):
+            l.append(StringBuffer())
+
+    def func():
+        l.clear()
+        # Redundant most of the time and adds time :-(
+        gc.collect()
+
+    def cleanup():
+        run_gc_collect()
+
+    return benchmark(func, init, cleanup, options.max_iterations)
 
 
 def python_simple_callback(options, gateway):
-    class Echo(object):
-        def echo(self, param):
-            return param
-
-        class Java:
-            implements = ["Py4JBenchmarkUtility$Echo"]
 
     entry_point = gateway.entry_point
     python_echo = Echo()
@@ -366,6 +391,7 @@ STD_TESTS = OrderedDict([
     ("python-large-string", python_large_string),
     ("python-extra-large-string", python_extra_large_string),
     ("python-multiple-calling-threads", python_multiple_calling_threads),
+    ("python-garbage-collection", python_garbage_collection),
     ("python-simple-callback", python_simple_callback),
 ])
 
