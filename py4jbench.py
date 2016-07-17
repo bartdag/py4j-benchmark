@@ -42,7 +42,8 @@ DEFAULT_CSV_ENCODING = "ascii"
 GC_COLLECT_RUN = 3
 
 HEADER = ["test", "iterations", "mean", "stddev", "total", "python version",
-          "java version", "py4j version", "os version", "cpu count", "date"]
+          "java version", "py4j version", "os version", "benchmark version",
+          "cpu count", "date"]
 
 STD_JAVA_SOURCE_FILE = "java/src/{0}.java".format(STD_CLASS_NAME)
 
@@ -56,6 +57,9 @@ DEFAULT_STRING_BYTE_SIZE = len(DEFAULT_STRING.encode("utf-8"))
 
 BenchStats = namedtuple(
     "BenchStats", ["iterations", "mean", "stddev", "total", "timestamp"])
+
+
+__version__ = "0.1.0"
 
 if sys.version_info.major == 2:
     range = xrange  # noqa
@@ -456,6 +460,14 @@ def get_parser():
         "--verbose", dest="verbose", action="store_true",
         default=False,
         help="Print information as the benchmark progresses")
+    parser.add_argument(
+        "--list", dest="list_benchmarks", action="store_true",
+        default=False,
+        help="Lists all benchmark tests")
+    parser.add_argument(
+        "--only", dest="only_benchmark", action="store",
+        default=None,
+        help="Run only the selected benchmark")
     return parser
 
 
@@ -540,8 +552,20 @@ def run_pinned_thread_tests(options, results):
     pass
 
 
+def list_benchmarks(options):
+    """Lists all benchmarks
+    """
+    # Bypass verbose by using print
+    for key in STD_TESTS:
+        print(key)
+    for key in PINNED_THREAD_TESTS:
+        print(key)
+
+
 def _run_tests(options, results, gateway, test_dict):
     for test_name, test in test_dict.items():
+        if options.only_benchmark and test_name != options.only_benchmark:
+            continue
         stats = test(options, gateway)
         results[test_name] = stats
         if options.verbose:
@@ -560,7 +584,7 @@ def report_results(options, results):
     mode = "a" if options.append_to_csv and file_exists else "w"
     suffix = [
         get_python_version(), get_java_version(options), get_py4j_version(),
-        get_os_version(), get_cpu_count()]
+        get_os_version(), __version__, get_cpu_count()]
     with codecs.open(
             csv_file_path, mode, encoding=DEFAULT_CSV_ENCODING) as csv_file:
         writer = csv.writer(csv_file, quoting=csv.QUOTE_NONNUMERIC)
@@ -589,6 +613,10 @@ def main():
     if args.verbose:
         global vprint
         vprint = verbose_print
+
+    if args.list_benchmarks:
+        list_benchmarks(args)
+        return
 
     vprint("Starting benchmark")
 
