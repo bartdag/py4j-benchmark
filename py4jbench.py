@@ -358,20 +358,21 @@ def both_large_bytes(options, gateway):
     size = min(LARGE_BYTES, options.max_bytes)
     bytes_to_transfer = random_bytes(size)
     echoBytes = gateway.jvm.Py4JBenchmarkUtility.echoBytes
+    iterations = max(10, options.max_iterations // 100)
 
     def func():
         new_bytes = echoBytes(bytes_to_transfer)
         assert new_bytes[0] == 1
         assert new_bytes[-1] == 2
 
-    return benchmark(func, None, run_gc_collect, options.max_iterations)
+    return benchmark(func, None, run_gc_collect, iterations)
 
 
 def both_extra_large_bytes(options, gateway):
     size = min(EXTRA_LARGE_BYTES, options.max_bytes)
     bytes_to_transfer = random_bytes(size)
     echoBytes = gateway.jvm.Py4JBenchmarkUtility.echoBytes
-    iterations = max(10, options.max_iterations // 100)
+    iterations = max(5, options.max_iterations // 200)
 
     def func():
         new_bytes = echoBytes(bytes_to_transfer)
@@ -476,6 +477,8 @@ def both_deep_recursive_callback(options, gateway):
 
     return benchmark(func, None, cleanup, options.max_iterations)
 
+
+# TODO Add loops and complicated usage with back n forth.
 
 STD_TESTS = OrderedDict([
     ("java-instance-creation", java_instance_creation),
