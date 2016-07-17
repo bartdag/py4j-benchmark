@@ -4,10 +4,10 @@ import java.util.Random;
 
 public class Py4JBenchmarkUtility {
 
-	private final int seed;
+	public final int seed;
 	private final Random random;
 
-	private static final int DEFAULT_SEED = 17;
+	public static final int DEFAULT_SEED = 17;
 
 	public Py4JBenchmarkUtility(int seed) {
 		this.seed = seed;
@@ -27,6 +27,13 @@ public class Py4JBenchmarkUtility {
 	public static int startCountdown(int count, Countdown pythonCountdown) {
 		Countdown javaCountdown = new CountdownImpl();
 		return pythonCountdown.countdown(count, javaCountdown);
+	}
+
+	public static byte[] echoBytes(byte[] bytes) {
+		// Change first and last byte
+		bytes[0] = 1;
+		bytes[bytes.length - 1] = 2;
+		return bytes;
 	}
 
 	public static void main(String[] args) {

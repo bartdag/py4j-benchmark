@@ -8,6 +8,7 @@ import datetime
 import gc
 from math import sqrt
 import os
+import random
 import platform
 import subprocess
 import sys
@@ -20,6 +21,9 @@ DEFAULT_MAX_ITERATIONS = 100
 
 DEFAULT_THREAD_COUNT = 50
 
+# 4 bytes (e.g., integer)
+SMALL_BYTES = 4
+
 # 1 KB
 MEDIUM_BYTES = 1024
 
@@ -27,7 +31,9 @@ MEDIUM_BYTES = 1024
 LARGE_BYTES = 1024 * 1024
 
 # 10 MB
-EXTRA_LARGE_BYTES = 10 * 1024 * 1024
+EXTRA_LARGE_BYTES = 25 * 1024 * 1024
+
+MAX_RANDOM_BYTES = 1024
 
 DEFAULT_SEED = 17
 
@@ -80,6 +86,23 @@ vprint = null_print
 
 
 # UTILITY HERE
+
+
+def random_bytes(n):
+    """Creates a bytearray of size n using random (instead of non-reproducible
+    urandom).
+    """
+    multiplier = 1
+    if n > MAX_RANDOM_BYTES:
+        multiplier = n // MAX_RANDOM_BYTES
+        n = MAX_RANDOM_BYTES
+
+    temp = bytearray(random.getrandbits(8) for i in range(n))
+
+    if multiplier:
+        temp *= multiplier
+
+    return temp
 
 
 def run_gc_collect():
@@ -270,7 +293,7 @@ def python_type_conversion(options, gateway):
     return benchmark(func, None, run_gc_collect, options.max_iterations)
 
 
-def python_medium_string(options, gateway):
+def both_medium_string(options, gateway):
     String = gateway.jvm.String
     size = min(MEDIUM_BYTES, options.max_bytes) // DEFAULT_STRING_BYTE_SIZE
     a_string = DEFAULT_STRING * size
@@ -281,7 +304,7 @@ def python_medium_string(options, gateway):
     return benchmark(func, None, run_gc_collect, options.max_iterations)
 
 
-def python_large_string(options, gateway):
+def both_large_string(options, gateway):
     String = gateway.jvm.String
     size = min(LARGE_BYTES, options.max_bytes) // DEFAULT_STRING_BYTE_SIZE
     a_string = DEFAULT_STRING * size
@@ -292,7 +315,7 @@ def python_large_string(options, gateway):
     return benchmark(func, None, run_gc_collect, options.max_iterations)
 
 
-def python_extra_large_string(options, gateway):
+def both_extra_large_string(options, gateway):
     String = gateway.jvm.String
     size = min(EXTRA_LARGE_BYTES, options.max_bytes)\
         // DEFAULT_STRING_BYTE_SIZE
@@ -305,7 +328,60 @@ def python_extra_large_string(options, gateway):
     return benchmark(func, None, run_gc_collect, iterations)
 
 
-def python_multiple_calling_threads(options, gateway):
+def both_small_bytes(options, gateway):
+    size = min(SMALL_BYTES, options.max_bytes)
+    bytes_to_transfer = random_bytes(size)
+    echoBytes = gateway.jvm.Py4JBenchmarkUtility.echoBytes
+
+    def func():
+        new_bytes = echoBytes(bytes_to_transfer)
+        assert new_bytes[0] == 1
+        assert new_bytes[-1] == 2
+
+    return benchmark(func, None, run_gc_collect, options.max_iterations)
+
+
+def both_medium_bytes(options, gateway):
+    size = min(MEDIUM_BYTES, options.max_bytes)
+    bytes_to_transfer = random_bytes(size)
+    echoBytes = gateway.jvm.Py4JBenchmarkUtility.echoBytes
+
+    def func():
+        new_bytes = echoBytes(bytes_to_transfer)
+        assert new_bytes[0] == 1
+        assert new_bytes[-1] == 2
+
+    return benchmark(func, None, run_gc_collect, options.max_iterations)
+
+
+def both_large_bytes(options, gateway):
+    size = min(LARGE_BYTES, options.max_bytes)
+    bytes_to_transfer = random_bytes(size)
+    echoBytes = gateway.jvm.Py4JBenchmarkUtility.echoBytes
+
+    def func():
+        new_bytes = echoBytes(bytes_to_transfer)
+        assert new_bytes[0] == 1
+        assert new_bytes[-1] == 2
+
+    return benchmark(func, None, run_gc_collect, options.max_iterations)
+
+
+def both_extra_large_bytes(options, gateway):
+    size = min(EXTRA_LARGE_BYTES, options.max_bytes)
+    bytes_to_transfer = random_bytes(size)
+    echoBytes = gateway.jvm.Py4JBenchmarkUtility.echoBytes
+    iterations = max(10, options.max_iterations // 100)
+
+    def func():
+        new_bytes = echoBytes(bytes_to_transfer)
+        assert new_bytes[0] == 1
+        assert new_bytes[-1] == 2
+
+    return benchmark(func, None, run_gc_collect, iterations)
+
+
+def both_multiple_calling_threads(options, gateway):
 
     threads_to_create = options.max_threads
 
@@ -371,7 +447,7 @@ def python_simple_callback(options, gateway):
     return benchmark(func, None, run_gc_collect, options.max_iterations)
 
 
-def python_recursive_callback(options, gateway):
+def both_recursive_callback(options, gateway):
     startCountdown = gateway.jvm.Py4JBenchmarkUtility.startCountdown
     pythonCountdown = Countdown()
 
@@ -386,22 +462,43 @@ def python_recursive_callback(options, gateway):
     return benchmark(func, None, cleanup, options.max_iterations)
 
 
+def both_deep_recursive_callback(options, gateway):
+    startCountdown = gateway.jvm.Py4JBenchmarkUtility.startCountdown
+    pythonCountdown = Countdown()
+
+    def func():
+        startCountdown(250, pythonCountdown)
+        assert pythonCountdown.called == 126
+
+    def cleanup():
+        pythonCountdown.called = 0
+        run_gc_collect()
+
+    return benchmark(func, None, cleanup, options.max_iterations)
+
+
 STD_TESTS = OrderedDict([
     ("java-instance-creation", java_instance_creation),
     ("java-static-method", java_static_method_call),
     ("java-list", java_list),
     ("python-type-conversion", python_type_conversion),
-    ("python-medium-string", python_medium_string),
-    ("python-large-string", python_large_string),
-    ("python-extra-large-string", python_extra_large_string),
-    ("python-multiple-calling-threads", python_multiple_calling_threads),
+    ("both-medium-string", both_medium_string),
+    ("both-large-string", both_large_string),
+    ("both-extra-large-string", both_extra_large_string),
+    ("both-small-bytes", both_small_bytes),
+    ("both-medium-bytes", both_medium_bytes),
+    ("both-large-bytes", both_large_bytes),
+    ("both-extra-large-bytes", both_extra_large_bytes),
+    ("both-multiple-calling-threads", both_multiple_calling_threads),
     ("python-garbage-collection", python_garbage_collection),
     ("python-simple-callback", python_simple_callback),
-    ("python-recursive-callback", python_recursive_callback),
+    ("both-recursive-callback", both_recursive_callback),
+    ("both-deep-recursive-callback", both_deep_recursive_callback),
 ])
 
 PINNED_THREAD_TESTS = OrderedDict([
-
+    ("pinned-both-recursive-callback", both_recursive_callback),
+    ("pinned-both-deep-recursive-callback", both_deep_recursive_callback),
 ])
 
 
@@ -544,7 +641,19 @@ def run_standard_tests(options, results):
 
 
 def run_pinned_thread_tests(options, results):
-    pass
+    """Runs the pinned thread test suite.
+    """
+    start_java(options.java_path, options.py4j_jar_path,
+               PINNED_THREAD_CLASS_NAME,
+               options.max_bytes)
+    gateway = get_pinned_thread_gateway()
+
+    try:
+        _run_tests(options, results, gateway, PINNED_THREAD_TESTS)
+    finally:
+        gateway.shutdown()
+
+    sleep(DEFAULT_SLEEP_TIME * 10)
 
 
 def list_benchmarks(options):
@@ -614,6 +723,12 @@ def main():
         return
 
     vprint("Starting benchmark")
+
+    vprint("Initializing random numbers")
+    random.seed(args.seed)
+
+    vprint("Increasing python recursion limit for deep recursive tests")
+    sys.setrecursionlimit(10000)
 
     with_pinned_thread = args.with_pinned_thread and has_pinned_thread()
     vprint("With pinned thread? {0}".format(with_pinned_thread))
