@@ -110,6 +110,12 @@ def run_gc_collect():
         gc.collect()
 
 
+def run_java_gc_collect(gateway):
+    gc = gateway.jvm.System.gc
+    for i in range(GC_COLLECT_RUN):
+        gc()
+
+
 def get_python_version():
     """Gets a friendly python version.
     """
@@ -678,11 +684,12 @@ def _run_tests(options, results, gateway, test_dict):
         if options.verbose:
             report_verbose_result(test_name, stats)
         run_gc_collect()
+        run_java_gc_collect(gateway)
         # This is not perfect because callback connections
         # are not closed and are kept for 30s so next connection will be
         # fast...
         gateway.close(keep_callback_server=True)
-        sleep(DEFAULT_SLEEP_TIME)
+        sleep(DEFAULT_SLEEP_TIME * 2.5)
 
 
 def report_results(options, results):
