@@ -483,7 +483,7 @@ def start_java(java_path, py4j_jar_path, main_class, max_bytes):
         java_heap_size)
     process = subprocess.Popen(cmd_line, shell=True, stdout=None, stderr=None,
                                stdin=None, close_fds=True)
-    sleep(DEFAULT_SLEEP_TIME * 5)
+    sleep(DEFAULT_SLEEP_TIME * 10)
     return process
 
 
@@ -533,7 +533,7 @@ def run_standard_tests(options, results):
     finally:
         gateway.shutdown()
 
-    sleep(DEFAULT_SLEEP_TIME * 5)
+    sleep(DEFAULT_SLEEP_TIME * 10)
 
 
 def run_pinned_thread_tests(options, results):
