@@ -238,16 +238,13 @@ def java_list(options, gateway):
         al.append(1)
         al2.append(2)
         al += al2
-        if not(len(al) == 2 and str(al) == str(al) and al == al):
-            raise Exception
+        assert len(al) == 2 and str(al) == str(al) and al == al
 
-        if not (al[0] == 1 and al[-1] == 2):
-            raise Exception
+        assert al[0] == 1 and al[-1] == 2
 
         # For backward compatibility because Python 2 does not delegate
         # __ne__ to __eq__
-        if not (al[:-1] == al1orig):
-            raise Exception
+        assert al[:-1] == al1orig
 
         al[0] = 2
 
@@ -369,8 +366,7 @@ def python_simple_callback(options, gateway):
 
     def func():
         response = entry_point.callEcho(python_echo, 1)
-        if response != 1:
-            raise Exception
+        assert response == 1
 
     return benchmark(func, None, run_gc_collect, options.max_iterations)
 
@@ -380,9 +376,8 @@ def python_recursive_callback(options, gateway):
     pythonCountdown = Countdown()
 
     def func():
-        startCountdown(20, pythonCountdown)
-        if pythonCountdown.called != 11:
-            raise Exception
+        startCountdown(40, pythonCountdown)
+        assert pythonCountdown.called == 21
 
     def cleanup():
         pythonCountdown.called = 0
