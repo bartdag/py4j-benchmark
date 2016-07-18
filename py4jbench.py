@@ -629,8 +629,10 @@ def get_gateway():
 def get_pinned_thread_gateway():
     """Get Py4J ClientServer that can work with both sides.
     """
-    from py4j.clientserver import ClientServer
-    client_server = ClientServer()
+    from py4j.clientserver import (
+        ClientServer, PythonParameters, JavaParameters)
+    client_server = ClientServer(
+        java_parameters=JavaParameters(), python_parameters=PythonParameters())
     return client_server
 
 

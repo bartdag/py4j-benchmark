@@ -9,5 +9,7 @@ public class Py4JPinnedThreadBenchmarkUtility {
 		}
 		Py4JBenchmarkUtility utility = new Py4JBenchmarkUtility(seed);
 		ClientServer clientServer = new ClientServer(utility);
+		// Necessary for earlier versions of Py4J
+		clientServer.startServer(true);
 	}
 }
