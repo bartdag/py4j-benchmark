@@ -567,11 +567,13 @@ def get_parser():
     parser.add_argument(
         "--only", dest="only_benchmarks", action="store",
         nargs="*",
-        help="Run only the selected benchmarks")
+        help="Run only the selected benchmarks. Can also be set with the "
+        "PY4J_BENCHMARK_ONLY environment variable.")
     parser.add_argument(
         "--skip", dest="skip_benchmarks", action="store",
         nargs="*",
-        help="Skip the selected benchmarks")
+        help="Skip the selected benchmarks. Can also be set with the "
+        "PY4J_BENCHMARK_SKIP environment variable.")
     return parser
 
 
@@ -728,9 +730,19 @@ def report_verbose_result(test_name, result):
     vprint(msg)
 
 
+def set_args_with_env_variables(args):
+    limit = os.environ.get("PY4J_BENCHMARK_SKIP")
+    if limit:
+        args.skip_benchmarks = limit.split(" ")
+    only = os.environ.get("PY4J_BENCHMARK_ONLY")
+    if only:
+        args.only_benchmarks = only.split(" ")
+
+
 def main():
     parser = get_parser()
     args = parser.parse_args()
+    set_args_with_env_variables(args)
     results = OrderedDict()
 
     if args.verbose:

@@ -69,9 +69,13 @@ Usage
     --verbose             Print information as the benchmark progresses
     --list                Lists all benchmark tests
     --only [ONLY_BENCHMARKS [ONLY_BENCHMARKS ...]]
-                            Run only the selected benchmarks
+                            Run only the selected benchmarks. Can also be
+                            set with the PY4J_BENCHMARK_ONLY environment
+                            variables.
     --skip [SKIP_BENCHMARKS [SKIP_BENCHMARKS ...]]
-                            Skip the selected benchmarks
+                            Skip the selected benchmarks. Can also be
+                            set with the PY4J_BENCHMARK_SKIP environment
+                            variables.
 
 
 
@@ -88,6 +92,9 @@ Usage Examples
 
     # Run benchmark on one environment. Generates report.csv
     tox -e py27-py4j092
+
+    # Run benchmark on one environment for one test only
+    export PY4J_BENCHMARK_ONLY=java-instance-creation tox -e py27-py4j092
 
     # Run benchmark on all supported environments. Generates report.csv
     tox
