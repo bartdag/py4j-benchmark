@@ -64,7 +64,6 @@ DEFAULT_STRING_BYTE_SIZE = len(DEFAULT_STRING.encode("utf-8"))
 BenchStats = namedtuple(
     "BenchStats", ["iterations", "mean", "stddev", "total", "timestamp"])
 
-
 __version__ = "0.1.0"
 
 if sys.version_info.major == 2:
@@ -566,9 +565,13 @@ def get_parser():
         default=False,
         help="Lists all benchmark tests")
     parser.add_argument(
-        "--only", dest="only_benchmark", action="store",
-        default=None,
-        help="Run only the selected benchmark")
+        "--only", dest="only_benchmarks", action="store",
+        nargs="*",
+        help="Run only the selected benchmarks")
+    parser.add_argument(
+        "--skip", dest="skip_benchmarks", action="store",
+        nargs="*",
+        help="Skip the selected benchmarks")
     return parser
 
 
@@ -679,7 +682,11 @@ def list_benchmarks(options):
 
 def _run_tests(options, results, gateway, test_dict):
     for test_name, test in test_dict.items():
-        if options.only_benchmark and test_name != options.only_benchmark:
+        if options.only_benchmarks and\
+                test_name not in options.only_benchmarks:
+            continue
+        if options.skip_benchmarks and\
+                test_name in options.skip_benchmarks:
             continue
         stats = test(options, gateway)
         results[test_name] = stats

@@ -29,14 +29,15 @@ Usage
 
 ::
 
-    usage: py4jbench.py [-h] [--no-pinned-thread] [--csv-output CSV_OUTPUT]
-        [--append-to-csv] [--javac-path JAVAC_PATH]
-        [--java-path JAVA_PATH] [--max-bytes MAX_BYTES]
-        [--max-iterations MAX_ITERATIONS]
-        [--max-threads MAX_THREADS] [--seed SEED] [--verbose]
-        [--list] [--only ONLY_BENCHMARK]
-        py4j_jar_path
 
+    usage: py4jbench.py [-h] [--no-pinned-thread] [--csv-output CSV_OUTPUT]
+                        [--append-to-csv] [--javac-path JAVAC_PATH]
+                        [--java-path JAVA_PATH] [--max-bytes MAX_BYTES]
+                        [--max-iterations MAX_ITERATIONS]
+                        [--max-threads MAX_THREADS] [--seed SEED] [--verbose]
+                        [--list] [--only [ONLY_BENCHMARKS [ONLY_BENCHMARKS ...]]]
+                        [--skip [SKIP_BENCHMARKS [SKIP_BENCHMARKS ...]]]
+                        py4j_jar_path
 
     Benchmarks Py4J
 
@@ -67,8 +68,11 @@ Usage
     --seed SEED           Seed to use to generate random data.
     --verbose             Print information as the benchmark progresses
     --list                Lists all benchmark tests
-    --only ONLY_BENCHMARK
-                            Run only the selected benchmark
+    --only [ONLY_BENCHMARKS [ONLY_BENCHMARKS ...]]
+                            Run only the selected benchmarks
+    --skip [SKIP_BENCHMARKS [SKIP_BENCHMARKS ...]]
+                            Skip the selected benchmarks
+
 
 
 Usage Examples
